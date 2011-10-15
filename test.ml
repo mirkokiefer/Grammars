@@ -1,4 +1,4 @@
 Libya (Country)
-  part of: Africa (Continent),
+  part of: Africa,
   population: 6 Mio,
-  headed by: Gaddhafi (Person).
+  headed by: Gaddhafi.
