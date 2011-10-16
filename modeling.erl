@@ -3,7 +3,6 @@
 -export([test_ml/0, test_json/0, test_code/1, print/0]).
 
 -record(token, {string, type}).
--record(state, {optional=false, states, string="", tokens=[]}).
 
 test_code(File) ->
   {ok, Data} = file:read_file("./" ++ File),
@@ -12,84 +11,75 @@ test_code(File) ->
 print() ->
   lists:foreach(fun(Each) -> io:format("~p~n", [Each]) end, test_code("test1")).
 
-grammar(State) -> json_grammar:grammar(State).
-primitive_chars(Type) -> json_grammar:primitive_chars(Type).
+grammar(State) -> ml_grammar:grammar(State).
+primitive_chars(Type) -> ml_grammar:primitive_chars(Type).
 
 test_json() ->
-  {success, Tokens, _RestString} = scan(#state{states=[start], string=test_code("test.json")}),
+  {success, Tokens, _RestString} = scan(start, string=test_code("test.json")),
   ReversedTokens = lists:reverse(Tokens),
   io:format("tokens: ~p~n", [ReversedTokens]),
   FilteredTokens = filter_tokens(ReversedTokens, [whitespace, comma, colon, eof, double_quotes]),
   io:format("tokens filtered: ~p~n", [FilteredTokens]).
 
 test_ml() ->
-  {success, Tokens, _RestString} = scan(#state{states=[start], string=test_code("test.ml")}),
-  ReversedTokens = lists:reverse(Tokens),
-  io:format("tokens: ~p~n", [ReversedTokens]),
-  FilteredTokens = filter_tokens(ReversedTokens, [spaces, newline, comma, colon, left_bracket, right_bracket, eof]),
+  {success, Tokens, RestString} = scan(start, test_code("test.ml")),
+  io:format("tokens: ~p~n", [Tokens]),
+  FilteredTokens = filter_tokens(Tokens, [spaces, newline, comma, colon, left_bracket, right_bracket, eof]),
   io:format("tokens filtered: ~p~n", [FilteredTokens]).
 
 filter_tokens(Tokens, FilterTypes) ->
   [Token || Token=#token{type=Type} <- Tokens, lists:member(Type, FilterTypes) == false].
 
-scan(State=#state{states=[{optional, OptionalState}|Rest]}) ->
-  io:format("scan optional: ~p~n", [State]),
-  scan_generic(State#state{optional=true, states=[OptionalState|Rest]});
-  
+scan(StartState, String) ->
+  case scan([StartState], String, []) of
+    {success, RestString, Tokens} -> {success, lists:reverse(Tokens), RestString};
+    Error -> Error
+  end.
 
-scan(#state{states=[{any, []}|_Rest]}) ->
-  {error, "no match in any state"};
+scan([], String, Tokens) ->
+  {success, String, Tokens};
 
-scan(State=#state{states=[{any, [FirstState|RestAny]}|Rest], string=String, tokens=Tokens}) ->
-  io:format("scan any: ~p~n~p~n~p~n~n", [FirstState, String, Tokens]),
-  case grammar(FirstState) of
-    undefined ->
-      case scan_type(String, FirstState) of
-        {true, Token, RestString} -> scan(#state{states=Rest, string=RestString, tokens=[Token|Tokens]});
-        {false, _, _} -> scan(State#state{states=[{any, RestAny}|Rest]})
-      end;
-    States ->
-      case scan(State#state{states=States}) of
-        {error, _} -> scan(State#state{states=[{any, RestAny}|Rest]});
-        {success, NewTokens, RestString} -> scan(#state{states=Rest, string=RestString, tokens=NewTokens})
-      end
+scan([{any, States}|Rest], String, Tokens) ->
+  case scan_any(States, String, Tokens) of
+    {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens);
+    {error, Error} -> {error, Error}
   end;
 
-scan(#state{states=[], string=String, tokens=Tokens}) ->
-  {success, Tokens, String};
+scan([{optional, State}|Rest], String, Tokens) ->
+  case scan_all([State], String, Tokens) of
+    {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens);
+    {error, _} -> scan(Rest, String, Tokens)
+  end;
 
-scan(State) ->
-  scan_generic(State).
+scan([RequiredState|Rest], String, Tokens) ->
+  case scan_all([RequiredState], String, Tokens) of
+    {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens);
+    {error, Error} -> {error, Error}
+  end.
 
-scan_generic(State=#state{states=[FirstState|Rest], string=String, tokens=Tokens}) ->
-  io:format("scan: ~p~n~p~n~p~n~n", [FirstState, String, Tokens]),
+scan_all([], String, Tokens) ->
+  {success, String, Tokens};
+
+scan_all([FirstState|Rest], String, Tokens) ->
   case grammar(FirstState) of
-    undefined -> scan_primitive(FirstState, State#state{states=Rest});
-    States -> scan_resolved_states(States, State#state{states=Rest})
-  end.
-
-scan_primitive(PrimitiveState, State=#state{optional=Optional, states=Rest, string=String, tokens=Tokens}) ->
-  case scan_type(String, PrimitiveState) of
-    {true, Token, RestString} -> scan(#state{states=Rest, string=RestString, tokens=[Token|Tokens]});
-    {false, _, _} ->
-      case Optional of
-        true -> scan(State#state{states=Rest});
-        false -> {error, "required state not matched"}
-      end
-  end.
-
-scan_resolved_states(States, State=#state{optional=Optional, states=Rest}) ->
-  case scan(State#state{states=States}) of
-    {error, Message} ->
-      case Optional of
-        true -> scan(State#state{states=Rest});
-        false -> {error, Message}
+    undefined ->
+      case scan_primitive(FirstState, String) of
+        {success, RestString, Token} -> scan(Rest, RestString, [Token|Tokens]);
+        {error, Error} -> {error, Error}
       end;
-    {success, NewTokens, RestString} -> scan(#state{states=Rest, string=RestString, tokens=NewTokens})
+    ResolvedStates -> scan(ResolvedStates++Rest, String, Tokens)
   end.
 
+scan_any([], _String, _Tokens) ->
+  {error, "none matched in scan_any"};
 
-scan_type(String, Type) -> scan_type(String, "", Type).
+scan_any([FirstState|Rest], String, Tokens) ->
+  case scan([FirstState], String, Tokens) of
+    {success, NewString, NewTokens} -> {success, NewString, NewTokens};
+    {error, _} -> scan_any(Rest, String, Tokens)
+  end.
+
+scan_primitive(State, String) -> scan_type(String, "", State).
 
 scan_type([], Match, Type) ->
   type_matched([], Match, Type);
@@ -101,7 +91,10 @@ scan_type(String=[First|Rest], Match, Type) ->
   end.
 
 type_matched(String, Match, Type) ->
-  {string:len(Match)>0, token(lists:reverse(Match), Type), String}.
+  case string:len(Match)>0 of
+    true -> {success, String, token(lists:reverse(Match), Type)};
+    false -> {error, "primitive scan failed"}
+  end.
 
 token(String, Type) ->
   #token{string=String, type=Type}.
