@@ -1,21 +1,29 @@
 -module(modeling).
 
--export([test/0, test/1, test_code/1, print/0]).
+-export([test_ml/0, test_json/0, test_code/1, print/0]).
 
 -record(token, {string, type}).
 -record(state, {optional=false, states, string="", tokens=[]}).
 
 test_code(File) ->
-  {ok, Data} = file:read_file("./" ++ File ++ ".ml"),
+  {ok, Data} = file:read_file("./" ++ File),
   binary:bin_to_list(Data).
 
 print() ->
   lists:foreach(fun(Each) -> io:format("~p~n", [Each]) end, test_code("test1")).
 
-test() -> test("test").
+grammar(State) -> json_grammar:grammar(State).
+primitive_chars(Type) -> json_grammar:primitive_chars(Type).
 
-test(File) ->
-  {success, Tokens, _RestString} = scan(#state{states=[start], string=test_code(File)}),
+test_json() ->
+  {success, Tokens, _RestString} = scan(#state{states=[start], string=test_code("test.json")}),
+  ReversedTokens = lists:reverse(Tokens),
+  io:format("tokens: ~p~n", [ReversedTokens]),
+  FilteredTokens = filter_tokens(ReversedTokens, [whitespace, comma, colon, eof, double_quotes]),
+  io:format("tokens filtered: ~p~n", [FilteredTokens]).
+
+test_ml() ->
+  {success, Tokens, _RestString} = scan(#state{states=[start], string=test_code("test.ml")}),
   ReversedTokens = lists:reverse(Tokens),
   io:format("tokens: ~p~n", [ReversedTokens]),
   FilteredTokens = filter_tokens(ReversedTokens, [spaces, newline, comma, colon, left_bracket, right_bracket, eof]),
@@ -23,20 +31,6 @@ test(File) ->
 
 filter_tokens(Tokens, FilterTypes) ->
   [Token || Token=#token{type=Type} <- Tokens, lists:member(Type, FilterTypes) == false].
-
-grammar(State) ->
-  case State of
-    start -> [entities];
-    entities ->[entity, {any, [next_entity, stop]}];
-    next_entity -> [newline, entities];
-    entity -> [entity_name, left_bracket, entity_type, right_bracket, {any, [dot, attributes]}];
-    attributes -> [newline, attribute];
-    attribute -> [{optional, spaces}, attribute_name, colon,
-      {optional, spaces}, attribute_value, {any, [next_attribute, dot]}];
-    next_attribute -> [comma, newline, attribute];
-    stop -> [{optional, eof}];
-    _ -> undefined
-  end.
 
 scan(State=#state{states=[{optional, OptionalState}|Rest]}) ->
   io:format("scan optional: ~p~n", [State]),
@@ -113,21 +107,3 @@ token(String, Type) ->
   #token{string=String, type=Type}.
 
 member(Char, Type) -> lists:member(Char, primitive_chars(Type)).
-
-name() -> utils:letters() ++ utils:digits() ++ utils:space().
-
-primitive_chars(Type) ->
-  case Type of  
-    entity_name -> name();
-    entity_type -> name();
-    attribute_name -> name();
-    attribute_value -> name();
-    spaces -> " ";
-    eof -> "\n ";
-    colon -> ":";
-    comma -> ",";
-    dot -> utils:dot();
-    left_bracket -> "(";
-    right_bracket -> ")";
-    newline -> "\n"
-  end.
