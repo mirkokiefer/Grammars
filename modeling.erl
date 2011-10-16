@@ -11,7 +11,7 @@ test_code(File) ->
 print() ->
   lists:foreach(fun(Each) -> io:format("~p~n", [Each]) end, test_code("test1")).
 
-grammar(State) -> ml_grammar:grammar(State).
+grammar(Rule) -> ml_grammar:grammar(Rule).
 primitive_rules(Type) -> ml_grammar:primitive_rules(Type).
 
 test_json() ->
@@ -30,8 +30,8 @@ test_ml() ->
 filter_tokens(Tokens, FilterTypes) ->
   [Token || Token=#token{type=Type} <- Tokens, lists:member(Type, FilterTypes) == false].
 
-scan(StartState, String) ->
-  case scan([StartState], String, []) of
+scan(StartRule, String) ->
+  case scan([StartRule], String, []) of
     {success, RestString, Tokens} -> {success, lists:reverse(Tokens), RestString};
     Error -> Error
   end.
@@ -48,25 +48,25 @@ scan([{any,[First|RestAny]}|Rest], String, Tokens) ->
     {error, _} -> scan([{any, RestAny}|Rest], String, Tokens)
   end;
 
-scan([{optional, State}|Rest], String, Tokens) ->
-  case scan_rule(State, String) of
+scan([{optional, Rule}|Rest], String, Tokens) ->
+  case scan_rule(Rule, String) of
     {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens++Tokens);
     {error, _} -> scan(Rest, String, Tokens)
   end;
 
-scan([RequiredState|Rest], String, Tokens) ->
-  case scan_rule(RequiredState, String) of
+scan([RequiredRule|Rest], String, Tokens) ->
+  case scan_rule(RequiredRule, String) of
     {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens++Tokens);
     {error, Error} -> {error, Error}
   end.
 
-scan_rule(State, String) ->
-  case grammar(State) of
-    undefined -> scan_primitive(State, String);
-    ResolvedStates -> scan(ResolvedStates, String, [])
+scan_rule(Rule, String) ->
+  case grammar(Rule) of
+    undefined -> scan_primitive(Rule, String);
+    ResolvedRules -> scan(ResolvedRules, String, [])
   end.
 
-scan_primitive(State, String) -> scan_primitive(String, "", State).
+scan_primitive(Rule, String) -> scan_primitive(String, "", Rule).
 
 scan_primitive([], Match, Type) ->
   type_matched([], Match, Type);
