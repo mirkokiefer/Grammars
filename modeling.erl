@@ -3,7 +3,7 @@
 -export([test/0, test/1, test_code/1, print/0]).
 
 -record(token, {string, type}).
--record(state, {optional=false, states, string, tokens}).
+-record(state, {optional=false, states, string="", tokens=[]}).
 
 test_code(File) ->
   {ok, Data} = file:read_file("./" ++ File ++ ".ml"),
@@ -15,9 +15,11 @@ print() ->
 test() -> test("test").
 
 test(File) ->
-  {success, Tokens, _RestString} = scan([start], test_code(File), []),
-  FilteredTokens = filter_tokens(Tokens, [spaces, newline, comma, colon, left_bracket, right_bracket, eof]),
-  io:format("tokens: ~p~n", [lists:reverse(FilteredTokens)]).
+  {success, Tokens, _RestString} = scan(#state{states=[start], string=test_code(File)}),
+  ReversedTokens = lists:reverse(Tokens),
+  io:format("tokens: ~p~n", [ReversedTokens]),
+  FilteredTokens = filter_tokens(ReversedTokens, [spaces, newline, comma, colon, left_bracket, right_bracket, eof]),
+  io:format("tokens filtered: ~p~n", [FilteredTokens]).
 
 filter_tokens(Tokens, FilterTypes) ->
   [Token || Token=#token{type=Type} <- Tokens, lists:member(Type, FilterTypes) == false].
@@ -36,56 +38,55 @@ grammar(State) ->
     _ -> undefined
   end.
 
-scan([{optional, OptionalState}|Rest], String, Tokens) ->
-  io:format("scan optional: ~p~n~p~n~p~n~n", [OptionalState, String, Tokens]),
-  case grammar(OptionalState) of
-    undefined ->
-      case scan_type(String, OptionalState) of
-        {true, Token, RestString} -> scan(Rest, RestString, [Token|Tokens]);
-        {false, _, _} -> scan(Rest, String, Tokens)
-      end;
-    States ->
-      case scan(States, String, Tokens) of
-        {error, _} -> scan(Rest, String, Tokens);
-        {success, NewTokens, RestString} -> scan(Rest, RestString, NewTokens)
-      end
-  end;
+scan(State=#state{states=[{optional, OptionalState}|Rest]}) ->
+  io:format("scan optional: ~p~n", [State]),
+  scan_generic(State#state{optional=true, states=[OptionalState|Rest]});
   
 
-scan([{any, []}|_Rest], _String, _Tokens) ->
+scan(#state{states=[{any, []}|_Rest]}) ->
   {error, "no match in any state"};
 
-scan([{any, [FirstState|RestAny]}|Rest], String, Tokens) ->
+scan(State=#state{states=[{any, [FirstState|RestAny]}|Rest], string=String, tokens=Tokens}) ->
   io:format("scan any: ~p~n~p~n~p~n~n", [FirstState, String, Tokens]),
   case grammar(FirstState) of
     undefined ->
       case scan_type(String, FirstState) of
-        {true, Token, RestString} -> scan(Rest, RestString, [Token|Tokens]);
-        {false, _, _} -> scan([{any, RestAny}|Rest], String, Tokens)
+        {true, Token, RestString} -> scan(#state{states=Rest, string=RestString, tokens=[Token|Tokens]});
+        {false, _, _} -> scan(State#state{states=[{any, RestAny}|Rest]})
       end;
     States ->
-      case scan(States, String, Tokens) of
-        {error, _} -> scan([{any, RestAny}|Rest], String, Tokens);
-        {success, NewTokens, RestString} -> scan(Rest, RestString, NewTokens)
+      case scan(State#state{states=States}) of
+        {error, _} -> scan(State#state{states=[{any, RestAny}|Rest]});
+        {success, NewTokens, RestString} -> scan(#state{states=Rest, string=RestString, tokens=NewTokens})
       end
   end;
 
-scan([], String, Tokens) ->
+scan(#state{states=[], string=String, tokens=Tokens}) ->
   {success, Tokens, String};
 
-scan([FirstState|Rest], String, Tokens) ->
+scan(State) ->
+  scan_generic(State).
+
+scan_generic(State=#state{optional=Optional, states=[FirstState|Rest], string=String, tokens=Tokens}) ->
   io:format("scan: ~p~n~p~n~p~n~n", [FirstState, String, Tokens]),
   case grammar(FirstState) of
     undefined ->
       case scan_type(String, FirstState) of
-        {true, Token, RestString} -> scan(Rest, RestString, [Token|Tokens]);
-        {false, _, _} -> {error, "required state not matched"}
+        {true, Token, RestString} -> scan(#state{states=Rest, string=RestString, tokens=[Token|Tokens]});
+        {false, _, _} ->
+          case Optional of
+            true -> scan(State#state{states=Rest});
+            false -> {error, "required state not matched"}
+          end
       end;
     States ->
-      case scan(States, String, Tokens) of
-        {error, Message} -> {error, Message};
-        {no_match, String, Tokens} -> scan(Rest, String, Tokens);
-        {success, NewTokens, RestString} -> scan(Rest, RestString, NewTokens)
+      case scan(State#state{states=States}) of
+        {error, Message} ->
+          case Optional of
+            true -> scan(State#state{states=Rest});
+            false -> {error, Message}
+          end;
+        {success, NewTokens, RestString} -> scan(#state{states=Rest, string=RestString, tokens=NewTokens})
       end
   end.
 
