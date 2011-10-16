@@ -67,28 +67,33 @@ scan(#state{states=[], string=String, tokens=Tokens}) ->
 scan(State) ->
   scan_generic(State).
 
-scan_generic(State=#state{optional=Optional, states=[FirstState|Rest], string=String, tokens=Tokens}) ->
+scan_generic(State=#state{states=[FirstState|Rest], string=String, tokens=Tokens}) ->
   io:format("scan: ~p~n~p~n~p~n~n", [FirstState, String, Tokens]),
   case grammar(FirstState) of
-    undefined ->
-      case scan_type(String, FirstState) of
-        {true, Token, RestString} -> scan(#state{states=Rest, string=RestString, tokens=[Token|Tokens]});
-        {false, _, _} ->
-          case Optional of
-            true -> scan(State#state{states=Rest});
-            false -> {error, "required state not matched"}
-          end
-      end;
-    States ->
-      case scan(State#state{states=States}) of
-        {error, Message} ->
-          case Optional of
-            true -> scan(State#state{states=Rest});
-            false -> {error, Message}
-          end;
-        {success, NewTokens, RestString} -> scan(#state{states=Rest, string=RestString, tokens=NewTokens})
+    undefined -> scan_primitive(FirstState, State#state{states=Rest});
+    States -> scan_resolved_states(States, State#state{states=Rest})
+  end.
+
+scan_primitive(PrimitiveState, State=#state{optional=Optional, states=Rest, string=String, tokens=Tokens}) ->
+  case scan_type(String, PrimitiveState) of
+    {true, Token, RestString} -> scan(#state{states=Rest, string=RestString, tokens=[Token|Tokens]});
+    {false, _, _} ->
+      case Optional of
+        true -> scan(State#state{states=Rest});
+        false -> {error, "required state not matched"}
       end
   end.
+
+scan_resolved_states(States, State=#state{optional=Optional, states=Rest}) ->
+  case scan(State#state{states=States}) of
+    {error, Message} ->
+      case Optional of
+        true -> scan(State#state{states=Rest});
+        false -> {error, Message}
+      end;
+    {success, NewTokens, RestString} -> scan(#state{states=Rest, string=RestString, tokens=NewTokens})
+  end.
+
 
 scan_type(String, Type) -> scan_type(String, "", Type).
 
