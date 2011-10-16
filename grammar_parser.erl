@@ -1,4 +1,4 @@
--module(modeling).
+-module(grammar_parser).
 
 -export([test_ml/0, test_json/0, test_code/1, print/0]).
 

@@ -15,7 +15,7 @@ grammar(State) ->
     _ -> undefined
   end.
 
-primitive_chars(Type) ->
+primitive_rules(Type) ->
   case Type of  
     entity_name -> name();
     entity_type -> name();
