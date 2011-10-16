@@ -12,7 +12,7 @@ print() ->
   lists:foreach(fun(Each) -> io:format("~p~n", [Each]) end, test_code("test1")).
 
 grammar(State) -> ml_grammar:grammar(State).
-primitive_chars(Type) -> ml_grammar:primitive_chars(Type).
+primitive_rules(Type) -> ml_grammar:primitive_rules(Type).
 
 test_json() ->
   {success, Tokens, _RestString} = scan(start, string=test_code("test.json")),
@@ -60,9 +60,6 @@ scan([RequiredState|Rest], String, Tokens) ->
     {error, Error} -> {error, Error}
   end.
 
-scan_all([], String, Tokens) ->
-  {success, String, Tokens};
-
 scan_all([FirstState|Rest], String, Tokens) ->
   case grammar(FirstState) of
     undefined ->
@@ -73,14 +70,14 @@ scan_all([FirstState|Rest], String, Tokens) ->
     ResolvedStates -> scan(ResolvedStates++Rest, String, Tokens)
   end.
 
-scan_primitive(State, String) -> scan_type(String, "", State).
+scan_primitive(State, String) -> scan_primitive(String, "", State).
 
-scan_type([], Match, Type) ->
+scan_primitive([], Match, Type) ->
   type_matched([], Match, Type);
 
-scan_type(String=[First|Rest], Match, Type) ->
+scan_primitive(String=[First|Rest], Match, Type) ->
   case member(First, Type) of
-    true -> scan_type(Rest, [First|Match], Type);
+    true -> scan_primitive(Rest, [First|Match], Type);
     false -> type_matched(String, Match, Type)
   end.
 
@@ -93,4 +90,4 @@ type_matched(String, Match, Type) ->
 token(String, Type) ->
   #token{string=String, type=Type}.
 
-member(Char, Type) -> lists:member(Char, primitive_chars(Type)).
+member(Char, Type) -> lists:member(Char, primitive_rules(Type)).

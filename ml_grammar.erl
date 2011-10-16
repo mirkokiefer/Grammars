@@ -1,5 +1,5 @@
 -module(ml_grammar).
--export([grammar/1, primitive_chars/1]).
+-export([grammar/1, primitive_rules/1]).
 
 grammar(State) ->
   case State of
