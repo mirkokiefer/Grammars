@@ -49,25 +49,21 @@ scan([{any,[First|RestAny]}|Rest], String, Tokens) ->
   end;
 
 scan([{optional, State}|Rest], String, Tokens) ->
-  case scan_all([State], String, Tokens) of
-    {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens);
+  case scan_rule(State, String) of
+    {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens++Tokens);
     {error, _} -> scan(Rest, String, Tokens)
   end;
 
 scan([RequiredState|Rest], String, Tokens) ->
-  case scan_all([RequiredState], String, Tokens) of
-    {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens);
+  case scan_rule(RequiredState, String) of
+    {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens++Tokens);
     {error, Error} -> {error, Error}
   end.
 
-scan_all([FirstState|Rest], String, Tokens) ->
-  case grammar(FirstState) of
-    undefined ->
-      case scan_primitive(FirstState, String) of
-        {success, RestString, Token} -> scan(Rest, RestString, [Token|Tokens]);
-        {error, Error} -> {error, Error}
-      end;
-    ResolvedStates -> scan(ResolvedStates++Rest, String, Tokens)
+scan_rule(State, String) ->
+  case grammar(State) of
+    undefined -> scan_primitive(State, String);
+    ResolvedStates -> scan(ResolvedStates, String, [])
   end.
 
 scan_primitive(State, String) -> scan_primitive(String, "", State).
@@ -83,7 +79,7 @@ scan_primitive(String=[First|Rest], Match, Type) ->
 
 type_matched(String, Match, Type) ->
   case string:len(Match)>0 of
-    true -> {success, String, token(lists:reverse(Match), Type)};
+    true -> {success, String, [token(lists:reverse(Match), Type)]};
     false -> {error, "primitive scan failed"}
   end.
 
