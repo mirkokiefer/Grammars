@@ -22,7 +22,7 @@ test_json() ->
   io:format("tokens filtered: ~p~n", [FilteredTokens]).
 
 test_ml() ->
-  {success, Tokens, RestString} = scan(start, test_code("test.ml")),
+  {success, Tokens, _RestString} = scan(start, test_code("test.ml")),
   io:format("tokens: ~p~n", [Tokens]),
   FilteredTokens = filter_tokens(Tokens, [spaces, newline, comma, colon, left_bracket, right_bracket, eof]),
   io:format("tokens filtered: ~p~n", [FilteredTokens]).
@@ -39,10 +39,13 @@ scan(StartState, String) ->
 scan([], String, Tokens) ->
   {success, String, Tokens};
 
-scan([{any, States}|Rest], String, Tokens) ->
-  case scan_any(States, String, Tokens) of
+scan([{any, []}|_Rest], _String, _Tokens) ->
+  {error, "none matched in 'any' rule"};
+
+scan([{any,[First|RestAny]}|Rest], String, Tokens) ->
+  case scan([First], String, Tokens) of
     {success, RestString, NewTokens} -> scan(Rest, RestString, NewTokens);
-    {error, Error} -> {error, Error}
+    {error, _} -> scan([{any, RestAny}|Rest], String, Tokens)
   end;
 
 scan([{optional, State}|Rest], String, Tokens) ->
@@ -68,15 +71,6 @@ scan_all([FirstState|Rest], String, Tokens) ->
         {error, Error} -> {error, Error}
       end;
     ResolvedStates -> scan(ResolvedStates++Rest, String, Tokens)
-  end.
-
-scan_any([], _String, _Tokens) ->
-  {error, "none matched in scan_any"};
-
-scan_any([FirstState|Rest], String, Tokens) ->
-  case scan([FirstState], String, Tokens) of
-    {success, NewString, NewTokens} -> {success, NewString, NewTokens};
-    {error, _} -> scan_any(Rest, String, Tokens)
   end.
 
 scan_primitive(State, String) -> scan_type(String, "", State).
